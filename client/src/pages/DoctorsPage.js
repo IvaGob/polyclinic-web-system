@@ -1,124 +1,138 @@
 import React, { useEffect, useState, useContext } from 'react';
-import { Container, Grid, Card, CardContent, Typography, CardActions, Button, TextField, Dialog, DialogTitle, DialogContent, DialogActions, Alert, Box } from '@mui/material';
+import { 
+    Container, Grid, Card, CardContent, Typography, CardActions, Button, 
+    Dialog, DialogTitle, DialogContent, DialogActions, Alert, Box, TextField, Chip 
+} from '@mui/material';
 import axios from '../api/axios';
 import AuthContext from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
 
 const DoctorsPage = () => {
     const [doctors, setDoctors] = useState([]);
     const [open, setOpen] = useState(false);
     const [selectedDoctor, setSelectedDoctor] = useState(null);
+    
+    // Стан для дати і слотів
     const [selectedDate, setSelectedDate] = useState('');
-    const [selectedTime, setSelectedTime] = useState('');
+    const [selectedTime, setSelectedTime] = useState(null); // Який слот обрав юзер
+    const [bookedSlots, setBookedSlots] = useState([]); // Список зайнятих годин з сервера
     const [message, setMessage] = useState({ type: '', text: '' });
 
-    const { user } = useContext(AuthContext); // Отримуємо поточного користувача
+    const { user } = useContext(AuthContext);
     const navigate = useNavigate();
 
-    // Завантаження списку лікарів при відкритті сторінки
+    // 1. Завантаження лікарів
     useEffect(() => {
-        const fetchDoctors = async () => {
-            try {
-                const res = await axios.get('/doctors');
-                setDoctors(res.data);
-            } catch (err) {
-                console.error("Помилка завантаження лікарів", err);
-            }
-        };
-        fetchDoctors();
+        axios.get('/doctors').then(res => setDoctors(res.data)).catch(err => console.error(err));
     }, []);
 
-    // Обробка кліку "Записатися"
+    // 2. Обчислення мінімальної дати (завтра)
+    const getTomorrowDate = () => {
+        const today = new Date();
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        return tomorrow.toISOString().split('T')[0]; // YYYY-MM-DD
+    };
+
+    // 3. Відкриття модалки
     const handleBookClick = (doctor) => {
-        // 1. Якщо це Гість (не увійшов)
         if (!user) {
-            if (window.confirm("Щоб записатися на прийом, необхідно увійти в систему. Перейти на сторінку входу?")) {
-                navigate('/login');
-            }
+            if (window.confirm("Увійдіть, щоб записатися.")) navigate('/login');
             return;
         }
-
-        // 2. Якщо це Лікар або Адмін (не Пацієнт)
         if (user.role !== 'patient') {
-            alert("Записуватися на прийом можуть тільки користувачі з роллю 'Пацієнт'.");
+            alert("Тільки пацієнти можуть записуватися.");
             return;
         }
-
-        // 3. Якщо все ок - відкриваємо модалку
         setSelectedDoctor(doctor);
-        setMessage({ type: '', text: '' });
+        setSelectedDate(getTomorrowDate()); // За замовчуванням - завтра
+        setSelectedTime(null);
         setOpen(true);
     };
 
-    // Відправка запиту на бронювання
-    const handleConfirmBooking = async () => {
-        if (!selectedDate || !selectedTime) {
-            setMessage({ type: 'error', text: 'Будь ласка, оберіть дату та час' });
-            return;
+    // 4. Завантаження зайнятих слотів при зміні дати
+    useEffect(() => {
+        if (selectedDoctor && selectedDate) {
+            const fetchBooked = async () => {
+                try {
+                    const res = await axios.get(`/appointments/booked?doctorId=${selectedDoctor.id}&date=${selectedDate}`);
+                    // Перетворюємо дати з БД (ISO) в простий час "HH:mm"
+                    const times = res.data.map(item => {
+                        const date = new Date(item.appointment_date);
+                        return date.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
+                    });
+                    setBookedSlots(times);
+                } catch (err) {
+                    console.error(err);
+                }
+            };
+            fetchBooked();
+            setSelectedTime(null); // Скидаємо вибір часу при зміні дати
         }
+    }, [selectedDate, selectedDoctor]);
 
+    // 5. Генерація всіх можливих слотів (09:00 - 17:00, крок 30 хв)
+    const generateTimeSlots = () => {
+        const slots = [];
+        let start = 9 * 60; // 09:00 у хвилинах
+        const end = 17 * 60; // 17:00
+
+        while (start < end) {
+            const hours = Math.floor(start / 60).toString().padStart(2, '0');
+            const minutes = (start % 60).toString().padStart(2, '0');
+            const timeString = `${hours}:${minutes}`;
+            slots.push(timeString);
+            start += 30;
+        }
+        return slots;
+    };
+
+    // 6. Відправка запиту
+    const handleConfirmBooking = async () => {
+        if (!selectedDate || !selectedTime) return;
         try {
-            // Формуємо дату у форматі ISO (YYYY-MM-DD HH:mm:ss)
             const fullDate = `${selectedDate} ${selectedTime}:00`;
-            
             await axios.post('/appointments', {
                 doctorId: selectedDoctor.id,
                 date: fullDate
             });
-
-            setMessage({ type: 'success', text: 'Успішно записано! Перевірте "Мій кабінет".' });
-            
-            // Закриваємо вікно через 2 секунди
+            setMessage({ type: 'success', text: 'Успішно записано!' });
             setTimeout(() => {
                 setOpen(false);
-                setSelectedDate('');
-                setSelectedTime('');
                 setMessage({ type: '', text: '' });
             }, 2000);
-
         } catch (err) {
-            // Відображаємо повідомлення від сервера (наприклад, "Час зайнято")
-            setMessage({ type: 'error', text: err.response?.data?.message || 'Помилка запису' });
+            setMessage({ type: 'error', text: err.response?.data?.message || 'Помилка' });
         }
     };
+
+    const timeSlots = generateTimeSlots();
 
     return (
         <Container sx={{ mt: 4 }}>
             <Box sx={{ mb: 4, textAlign: 'center' }}>
-                <Typography variant="h4" gutterBottom component="h1">
-                    Наші Спеціалісти
-                </Typography>
-                <Typography variant="subtitle1" color="text.secondary">
-                    Оберіть лікаря та зручний час для візиту онлайн
-                </Typography>
+                <Typography variant="h4" gutterBottom>Наші Спеціалісти</Typography>
+                <Typography color="text.secondary">Оберіть лікаря для запису</Typography>
             </Box>
 
             <Grid container spacing={3}>
                 {doctors.map((doc) => (
                     <Grid item xs={12} sm={6} md={4} key={doc.id}>
-                        <Card elevation={3} sx={{ height: '100%', display: 'flex', flexDirection: 'column', transition: '0.3s', '&:hover': { transform: 'translateY(-5px)' } }}>
+                        <Card elevation={3} sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                             <CardContent sx={{ flexGrow: 1 }}>
-                                <Typography variant="overline" color="primary" sx={{ fontWeight: 'bold', fontSize: '0.9rem' }}>
+                                <Typography variant="overline" color="primary" fontWeight="bold">
                                     {doc.specialization}
                                 </Typography>
-                                <Typography variant="h5" component="div" gutterBottom>
-                                    {doc.full_name}
-                                </Typography>
-                                <Typography sx={{ mb: 1.5, fontWeight: 'medium' }} color="text.primary">
-                                    Кабінет: {doc.cabinet_number}
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary">
-                                    {doc.bio || "Інформація про лікаря відсутня."}
+                                <Typography variant="h5" gutterBottom>{doc.full_name}</Typography>
+                                <Typography color="text.secondary">Кабінет: {doc.cabinet_number}</Typography>
+                                <Typography variant="body2" sx={{ mt: 1 }}>
+                                    {doc.bio || "Інформація відсутня"}
                                 </Typography>
                             </CardContent>
-                            <CardActions sx={{ p: 2, pt: 0 }}>
-                                <Button 
-                                    fullWidth 
-                                    variant="contained" 
-                                    size="large"
-                                    onClick={() => handleBookClick(doc)}
-                                >
-                                    Записатися на прийом
+                            <CardActions sx={{ p: 2 }}>
+                                <Button fullWidth variant="contained" onClick={() => handleBookClick(doc)}>
+                                    Записатися
                                 </Button>
                             </CardActions>
                         </Card>
@@ -126,50 +140,60 @@ const DoctorsPage = () => {
                 ))}
             </Grid>
 
-            {/* Модальне вікно запису */}
-            <Dialog open={open} onClose={() => setOpen(false)} maxWidth="xs" fullWidth>
-                <DialogTitle sx={{ textAlign: 'center' }}>
-                    Запис до лікаря
-                    <Typography variant="subtitle2" color="primary">
-                        {selectedDoctor?.full_name}
-                    </Typography>
-                </DialogTitle>
-                
+            {/* МОДАЛЬНЕ ВІКНО ЗАПИСУ */}
+            <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
+                <DialogTitle>Запис до лікаря: {selectedDoctor?.full_name}</DialogTitle>
                 <DialogContent>
-                    {message.text && (
-                        <Alert severity={message.type} sx={{ mb: 2 }}>
-                            {message.text}
-                        </Alert>
-                    )}
-                    
-                    <Box sx={{ mt: 1 }}>
+                    {message.text && <Alert severity={message.type} sx={{ mb: 2 }}>{message.text}</Alert>}
+
+                    <Box sx={{ mt: 2 }}>
                         <TextField
-                            label="Дата візиту"
+                            label="Оберіть дату"
                             type="date"
                             fullWidth
-                            required
-                            InputLabelProps={{ shrink: true }}
                             value={selectedDate}
                             onChange={(e) => setSelectedDate(e.target.value)}
-                            sx={{ mb: 2 }}
+                            // Обмежуємо вибір: мінімум завтра
+                            inputProps={{ min: getTomorrowDate() }} 
+                            sx={{ mb: 3 }}
                         />
-                        <TextField
-                            label="Час візиту"
-                            type="time"
-                            fullWidth
-                            required
-                            InputLabelProps={{ shrink: true }}
-                            inputProps={{ step: 1800 }} // Крок 30 хвилин
-                            value={selectedTime}
-                            onChange={(e) => setSelectedTime(e.target.value)}
-                            helperText="Прийом триває 30 хвилин"
-                        />
+
+                        <Typography variant="subtitle2" gutterBottom>Доступні години:</Typography>
+                        
+                        <Grid container spacing={1}>
+                            {timeSlots.map((time) => {
+                                // Перевіряємо, чи цей час є в списку зайнятих
+                                const isBooked = bookedSlots.includes(time);
+                                const isSelected = selectedTime === time;
+
+                                return (
+                                    <Grid item xs={3} key={time}>
+                                        <Chip
+                                            label={time}
+                                            clickable={!isBooked}
+                                            color={isSelected ? "primary" : (isBooked ? "default" : "success")}
+                                            variant={isSelected ? "filled" : "outlined"}
+                                            onClick={() => !isBooked && setSelectedTime(time)}
+                                            icon={isBooked ? undefined : <AccessTimeIcon />}
+                                            sx={{ 
+                                                width: '100%', 
+                                                opacity: isBooked ? 0.5 : 1,
+                                                textDecoration: isBooked ? 'line-through' : 'none'
+                                            }}
+                                        />
+                                    </Grid>
+                                );
+                            })}
+                        </Grid>
                     </Box>
                 </DialogContent>
-                
-                <DialogActions sx={{ px: 3, pb: 3 }}>
-                    <Button onClick={() => setOpen(false)} color="inherit">Скасувати</Button>
-                    <Button onClick={handleConfirmBooking} variant="contained" disabled={!selectedDate || !selectedTime}>
+                <DialogActions>
+                    <Button onClick={() => setOpen(false)}>Скасувати</Button>
+                    <Button 
+                        onClick={handleConfirmBooking} 
+                        variant="contained" 
+                        disabled={!selectedTime}
+                    >
                         Підтвердити запис
                     </Button>
                 </DialogActions>

@@ -396,5 +396,28 @@ app.get('/api/medical-records/patient/:patientId', authenticateToken, async (req
         res.status(500).send('Server Error');
     }
 });
+// 15. Отримати список ЗАЙНЯТИХ слотів для лікаря на конкретну дату
+app.get('/api/appointments/booked', async (req, res) => {
+    try {
+        const { doctorId, date } = req.query; // Очікуємо ?doctorId=1&date=2023-12-12
+
+        // Вибираємо тільки час записів, які не скасовані
+        const query = `
+            SELECT appointment_date 
+            FROM appointments 
+            WHERE doctor_id = $1 
+            AND DATE(appointment_date) = $2 
+            AND status != 'cancelled'
+        `;
+        
+        const result = await pool.query(query, [doctorId, date]);
+        
+        // Повертаємо масив дат
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).send('Server Error');
+    }
+});
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
