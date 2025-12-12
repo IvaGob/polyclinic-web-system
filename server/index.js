@@ -419,5 +419,115 @@ app.get('/api/appointments/booked', async (req, res) => {
         res.status(500).send('Server Error');
     }
 });
+// 16. Отримати повний список лікарів (для адміна)
+app.get('/api/admin/doctors', authenticateToken, async (req, res) => {
+    try {
+        if (req.user.role !== 'admin') return res.status(403).json({ message: "Доступ заборонено" });
+
+        // Витягуємо більше даних, ніж для пацієнтів (включаючи email і телефон)
+        const query = `
+            SELECT d.id, u.email, u.full_name, u.phone, s.id as specialization_id, s.name as specialization, d.bio, d.cabinet_number 
+            FROM doctors d 
+            JOIN users u ON d.user_id = u.id 
+            JOIN specializations s ON d.specialization_id = s.id
+            ORDER BY u.full_name
+        `;
+        const result = await pool.query(query);
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Server Error');
+    }
+});
+
+// 17. Оновити дані лікаря
+app.put('/api/admin/doctors/:id', authenticateToken, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        if (req.user.role !== 'admin') return res.status(403).json({ message: "Доступ заборонено" });
+
+        const { id } = req.params; // ID лікаря
+        const { fullName, phone, specializationId, bio, cabinetNumber } = req.body;
+
+        await client.query('BEGIN');
+
+        // 1. Отримуємо user_id цього лікаря
+        const docRes = await client.query('SELECT user_id FROM doctors WHERE id = $1', [id]);
+        if (docRes.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ message: "Лікаря не знайдено" });
+        }
+        const userId = docRes.rows[0].user_id;
+
+        // 2. Оновлюємо загальні дані (users)
+        await client.query(
+            'UPDATE users SET full_name = $1, phone = $2 WHERE id = $3',
+            [fullName, phone, userId]
+        );
+
+        // 3. Оновлюємо специфічні дані (doctors)
+        await client.query(
+            'UPDATE doctors SET specialization_id = $1, bio = $2, cabinet_number = $3 WHERE id = $4',
+            [specializationId, bio, cabinetNumber, id]
+        );
+
+        await client.query('COMMIT');
+        res.json({ message: "Дані лікаря успішно оновлено" });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error(err);
+        res.status(500).send('Server Error');
+    } finally {
+        client.release();
+    }
+});
+
+// 18. Видалити лікаря
+app.delete('/api/admin/doctors/:id', authenticateToken, async (req, res) => {
+    try {
+        if (req.user.role !== 'admin') return res.status(403).json({ message: "Доступ заборонено" });
+        
+        const { id } = req.params;
+
+        // Знаходимо user_id
+        const docRes = await pool.query('SELECT user_id FROM doctors WHERE id = $1', [id]);
+        if (docRes.rows.length === 0) return res.status(404).json({ message: "Лікаря не знайдено" });
+        const userId = docRes.rows[0].user_id;
+
+        // Видаляємо користувача (завдяки CASCADE лікар теж видалиться)
+        await pool.query('DELETE FROM users WHERE id = $1', [userId]);
+
+        res.json({ message: "Лікаря видалено" });
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Server Error');
+    }
+});
+// 19. (АДМІН) Додати спеціалізацію
+app.post('/api/admin/specializations', authenticateToken, async (req, res) => {
+    try {
+        if (req.user.role !== 'admin') return res.status(403).json({ message: "Доступ заборонено" });
+        const { name } = req.body;
+        const newSpec = await pool.query('INSERT INTO specializations (name) VALUES ($1) RETURNING *', [name]);
+        res.json(newSpec.rows[0]);
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Server Error');
+    }
+});
+
+// 20. (АДМІН) Видалити спеціалізацію
+app.delete('/api/admin/specializations/:id', authenticateToken, async (req, res) => {
+    try {
+        if (req.user.role !== 'admin') return res.status(403).json({ message: "Доступ заборонено" });
+        const { id } = req.params;
+        // Видалення (може викликати помилку, якщо є лікарі з цією спеціалізацією)
+        await pool.query('DELETE FROM specializations WHERE id = $1', [id]);
+        res.json({ message: "Спеціалізацію видалено" });
+    } catch (err) {
+        console.error(err);
+        res.status(400).json({ message: "Неможливо видалити: існують лікарі з цією спеціалізацією" });
+    }
+});
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

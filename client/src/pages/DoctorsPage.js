@@ -1,12 +1,12 @@
 import React, { useEffect, useState, useContext } from 'react';
 import { 
-    Container, Grid, Card, CardContent, Typography, CardActions, Button, 
-    Dialog, DialogTitle, DialogContent, DialogActions, Alert, Box, TextField, Chip 
+    Container, Card, CardContent, Typography, CardActions, Button, 
+    Dialog, DialogTitle, DialogContent, DialogActions, Alert, Box, TextField, Avatar, Grid 
 } from '@mui/material';
 import axios from '../api/axios';
 import AuthContext from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import MedicalServicesOutlinedIcon from '@mui/icons-material/MedicalServicesOutlined';
 
 const DoctorsPage = () => {
     const [doctors, setDoctors] = useState([]);
@@ -15,49 +15,45 @@ const DoctorsPage = () => {
     
     // Стан для дати і слотів
     const [selectedDate, setSelectedDate] = useState('');
-    const [selectedTime, setSelectedTime] = useState(null); // Який слот обрав юзер
-    const [bookedSlots, setBookedSlots] = useState([]); // Список зайнятих годин з сервера
+    const [selectedTime, setSelectedTime] = useState(null);
+    const [bookedSlots, setBookedSlots] = useState([]);
     const [message, setMessage] = useState({ type: '', text: '' });
 
     const { user } = useContext(AuthContext);
     const navigate = useNavigate();
 
-    // 1. Завантаження лікарів
     useEffect(() => {
         axios.get('/doctors').then(res => setDoctors(res.data)).catch(err => console.error(err));
     }, []);
 
-    // 2. Обчислення мінімальної дати (завтра)
     const getTomorrowDate = () => {
         const today = new Date();
         const tomorrow = new Date(today);
         tomorrow.setDate(tomorrow.getDate() + 1);
-        return tomorrow.toISOString().split('T')[0]; // YYYY-MM-DD
+        return tomorrow.toISOString().split('T')[0];
     };
 
-    // 3. Відкриття модалки
     const handleBookClick = (doctor) => {
         if (!user) {
             if (window.confirm("Увійдіть, щоб записатися.")) navigate('/login');
             return;
         }
         if (user.role !== 'patient') {
+            // Ця перевірка тепер дублюється, але хай залишається для надійності
             alert("Тільки пацієнти можуть записуватися.");
             return;
         }
         setSelectedDoctor(doctor);
-        setSelectedDate(getTomorrowDate()); // За замовчуванням - завтра
+        setSelectedDate(getTomorrowDate());
         setSelectedTime(null);
         setOpen(true);
     };
 
-    // 4. Завантаження зайнятих слотів при зміні дати
     useEffect(() => {
         if (selectedDoctor && selectedDate) {
             const fetchBooked = async () => {
                 try {
                     const res = await axios.get(`/appointments/booked?doctorId=${selectedDoctor.id}&date=${selectedDate}`);
-                    // Перетворюємо дати з БД (ISO) в простий час "HH:mm"
                     const times = res.data.map(item => {
                         const date = new Date(item.appointment_date);
                         return date.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
@@ -68,15 +64,14 @@ const DoctorsPage = () => {
                 }
             };
             fetchBooked();
-            setSelectedTime(null); // Скидаємо вибір часу при зміні дати
+            setSelectedTime(null);
         }
     }, [selectedDate, selectedDoctor]);
 
-    // 5. Генерація всіх можливих слотів (09:00 - 17:00, крок 30 хв)
     const generateTimeSlots = () => {
         const slots = [];
-        let start = 9 * 60; // 09:00 у хвилинах
-        const end = 17 * 60; // 17:00
+        let start = 9 * 60; 
+        const end = 17 * 60; 
 
         while (start < end) {
             const hours = Math.floor(start / 60).toString().padStart(2, '0');
@@ -88,7 +83,6 @@ const DoctorsPage = () => {
         return slots;
     };
 
-    // 6. Відправка запиту
     const handleConfirmBooking = async () => {
         if (!selectedDate || !selectedTime) return;
         try {
@@ -112,89 +106,171 @@ const DoctorsPage = () => {
     return (
         <Container sx={{ mt: 4 }}>
             <Box sx={{ mb: 4, textAlign: 'center' }}>
-                <Typography variant="h4" gutterBottom>Наші Спеціалісти</Typography>
-                <Typography color="text.secondary">Оберіть лікаря для запису</Typography>
+                <Typography variant="h4" gutterBottom component="h1" fontWeight="bold" color="primary.dark">
+                    Наші Спеціалісти
+                </Typography>
+                <Typography variant="subtitle1" color="text.secondary">
+                    Оберіть лікаря та зручний час для візиту онлайн
+                </Typography>
             </Box>
 
-            <Grid container spacing={3}>
+            <Box sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+                gap: 3
+            }}>
                 {doctors.map((doc) => (
-                    <Grid item xs={12} sm={6} md={4} key={doc.id}>
-                        <Card elevation={3} sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                            <CardContent sx={{ flexGrow: 1 }}>
-                                <Typography variant="overline" color="primary" fontWeight="bold">
-                                    {doc.specialization}
-                                </Typography>
-                                <Typography variant="h5" gutterBottom>{doc.full_name}</Typography>
-                                <Typography color="text.secondary">Кабінет: {doc.cabinet_number}</Typography>
-                                <Typography variant="body2" sx={{ mt: 1 }}>
-                                    {doc.bio || "Інформація відсутня"}
-                                </Typography>
-                            </CardContent>
-                            <CardActions sx={{ p: 2 }}>
-                                <Button fullWidth variant="contained" onClick={() => handleBookClick(doc)}>
-                                    Записатися
-                                </Button>
-                            </CardActions>
-                        </Card>
-                    </Grid>
-                ))}
-            </Grid>
+                    <Card 
+                        key={doc.id}
+                        elevation={2} 
+                        sx={{ 
+                            height: '100%', 
+                            display: 'flex', 
+                            flexDirection: 'column', 
+                            borderRadius: 3,
+                            transition: '0.3s',
+                            '&:hover': { transform: 'translateY(-4px)', boxShadow: 6 }
+                        }}
+                    >
+                        <CardContent sx={{ flexGrow: 1, textAlign: 'center' }}>
+                            <Avatar 
+                                sx={{ 
+                                    bgcolor: 'primary.light', 
+                                    width: 64, 
+                                    height: 64, 
+                                    margin: '0 auto 16px auto' 
+                                }}
+                            >
+                                <MedicalServicesOutlinedIcon fontSize="large" sx={{ color: 'white' }} />
+                            </Avatar>
 
-            {/* МОДАЛЬНЕ ВІКНО ЗАПИСУ */}
+                            <Typography 
+                                variant="subtitle1" 
+                                color="primary.main" 
+                                sx={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 1, mb: 1 }}
+                            >
+                                {doc.specialization}
+                            </Typography>
+
+                            <Typography variant="h5" component="div" gutterBottom fontWeight="bold">
+                                {doc.full_name}
+                            </Typography>
+                            
+                            <Box sx={{ 
+                                bgcolor: 'background.default', 
+                                py: 0.5, 
+                                px: 2, 
+                                borderRadius: 4, 
+                                display: 'inline-block', 
+                                mb: 2 
+                             }}>
+                                <Typography variant="body2" color="text.secondary" fontWeight="medium">
+                                    Кабінет: {doc.cabinet_number}
+                                </Typography>
+                            </Box>
+
+                            <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                                {doc.bio || "Інформація про досвід лікаря уточнюється."}
+                            </Typography>
+                        </CardContent>
+                        
+                        <CardActions sx={{ p: 2, pt: 0 }}>
+                            {/* Логіка відображення кнопки: */}
+                            {(!user || user.role === 'patient') ? (
+                                <Button 
+                                    fullWidth 
+                                    variant="contained" 
+                                    size="large"
+                                    onClick={() => handleBookClick(doc)}
+                                    sx={{ borderRadius: 2, py: 1.2 }}
+                                >
+                                    Записатися на прийом
+                                </Button>
+                            ) : (
+                                <Button 
+                                    fullWidth 
+                                    variant="outlined" 
+                                    disabled
+                                    sx={{ borderRadius: 2, py: 1.2 }}
+                                >
+                                    Запис тільки для пацієнтів
+                                </Button>
+                            )}
+                        </CardActions>
+                    </Card>
+                ))}
+            </Box>
+
             <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
-                <DialogTitle>Запис до лікаря: {selectedDoctor?.full_name}</DialogTitle>
+                <DialogTitle sx={{ textAlign: 'center', pb: 1 }}>
+                    Запис до лікаря
+                    <Typography variant="h6" color="primary.dark" fontWeight="bold">
+                        {selectedDoctor?.full_name}
+                    </Typography>
+                </DialogTitle>
+                
                 <DialogContent>
                     {message.text && <Alert severity={message.type} sx={{ mb: 2 }}>{message.text}</Alert>}
 
                     <Box sx={{ mt: 2 }}>
                         <TextField
-                            label="Оберіть дату"
+                            label="Оберіть дату візиту"
                             type="date"
                             fullWidth
                             value={selectedDate}
                             onChange={(e) => setSelectedDate(e.target.value)}
-                            // Обмежуємо вибір: мінімум завтра
                             inputProps={{ min: getTomorrowDate() }} 
                             sx={{ mb: 3 }}
                         />
 
-                        <Typography variant="subtitle2" gutterBottom>Доступні години:</Typography>
-                        
-                        <Grid container spacing={1}>
-                            {timeSlots.map((time) => {
-                                // Перевіряємо, чи цей час є в списку зайнятих
-                                const isBooked = bookedSlots.includes(time);
-                                const isSelected = selectedTime === time;
+                        {selectedDate && (
+                            <>
+                                <Typography variant="subtitle2" gutterBottom sx={{ mb: 2 }}>
+                                    Доступні години на {new Date(selectedDate).toLocaleDateString('uk-UA')}:
+                                </Typography>
+                                
+                                <Grid container spacing={2}>
+                                    {timeSlots.map((time) => {
+                                        const isBooked = bookedSlots.includes(time);
+                                        const isSelected = selectedTime === time;
 
-                                return (
-                                    <Grid item xs={3} key={time}>
-                                        <Chip
-                                            label={time}
-                                            clickable={!isBooked}
-                                            color={isSelected ? "primary" : (isBooked ? "default" : "success")}
-                                            variant={isSelected ? "filled" : "outlined"}
-                                            onClick={() => !isBooked && setSelectedTime(time)}
-                                            icon={isBooked ? undefined : <AccessTimeIcon />}
-                                            sx={{ 
-                                                width: '100%', 
-                                                opacity: isBooked ? 0.5 : 1,
-                                                textDecoration: isBooked ? 'line-through' : 'none'
-                                            }}
-                                        />
-                                    </Grid>
-                                );
-                            })}
-                        </Grid>
+                                        return (
+                                            <Grid item xs={4} sm={3} key={time}>
+                                                <Button
+                                                    variant={isSelected ? "contained" : "outlined"}
+                                                    color={isSelected ? "primary" : (isBooked ? "inherit" : "success")}
+                                                    onClick={() => !isBooked && setSelectedTime(time)}
+                                                    disabled={isBooked}
+                                                    fullWidth
+                                                    sx={{ 
+                                                        py: 1, 
+                                                        borderRadius: 2,
+                                                        fontWeight: 'bold',
+                                                        opacity: isBooked ? 0.4 : 1,
+                                                        textDecoration: isBooked ? 'line-through' : 'none',
+                                                        borderColor: isBooked ? '#ccc' : undefined
+                                                    }}
+                                                >
+                                                    {time}
+                                                </Button>
+                                            </Grid>
+                                        );
+                                    })}
+                                </Grid>
+                            </>
+                        )}
                     </Box>
                 </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setOpen(false)}>Скасувати</Button>
+                <DialogActions sx={{ px: 3, pb: 3, pt: 2 }}>
+                    <Button onClick={() => setOpen(false)} color="inherit" size="large">Скасувати</Button>
                     <Button 
                         onClick={handleConfirmBooking} 
                         variant="contained" 
+                        size="large"
                         disabled={!selectedTime}
+                        sx={{ px: 4 }}
                     >
-                        Підтвердити запис
+                        Підтвердити
                     </Button>
                 </DialogActions>
             </Dialog>
