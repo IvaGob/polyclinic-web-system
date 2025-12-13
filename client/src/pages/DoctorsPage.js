@@ -2,11 +2,11 @@ import React, { useEffect, useState, useContext } from 'react';
 import { 
     Container, Card, CardContent, Typography, CardActions, Button, 
     Dialog, DialogTitle, DialogContent, DialogActions, Alert, Box, TextField, Avatar, Grid 
-} from '@mui/material';
+} from '@mui/material'; // Grid залишив для використання всередині модалки
 import axios from '../api/axios';
 import AuthContext from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import MedicalServicesOutlinedIcon from '@mui/icons-material/MedicalServicesOutlined';
+import MedicalServicesOutlinedIcon from '@mui/icons-material/MedicalServicesOutlined'; // Іконка для лікаря
 
 const DoctorsPage = () => {
     const [doctors, setDoctors] = useState([]);
@@ -22,10 +22,12 @@ const DoctorsPage = () => {
     const { user } = useContext(AuthContext);
     const navigate = useNavigate();
 
+    // 1. Завантаження лікарів
     useEffect(() => {
         axios.get('/doctors').then(res => setDoctors(res.data)).catch(err => console.error(err));
     }, []);
 
+    // 2. Обчислення мінімальної дати (завтра)
     const getTomorrowDate = () => {
         const today = new Date();
         const tomorrow = new Date(today);
@@ -33,13 +35,13 @@ const DoctorsPage = () => {
         return tomorrow.toISOString().split('T')[0];
     };
 
+    // 3. Відкриття модалки
     const handleBookClick = (doctor) => {
         if (!user) {
             if (window.confirm("Увійдіть, щоб записатися.")) navigate('/login');
             return;
         }
         if (user.role !== 'patient') {
-            // Ця перевірка тепер дублюється, але хай залишається для надійності
             alert("Тільки пацієнти можуть записуватися.");
             return;
         }
@@ -49,6 +51,7 @@ const DoctorsPage = () => {
         setOpen(true);
     };
 
+    // 4. Завантаження зайнятих слотів
     useEffect(() => {
         if (selectedDoctor && selectedDate) {
             const fetchBooked = async () => {
@@ -68,6 +71,7 @@ const DoctorsPage = () => {
         }
     }, [selectedDate, selectedDoctor]);
 
+    // 5. Генерація слотів
     const generateTimeSlots = () => {
         const slots = [];
         let start = 9 * 60; 
@@ -83,6 +87,7 @@ const DoctorsPage = () => {
         return slots;
     };
 
+    // 6. Відправка запиту
     const handleConfirmBooking = async () => {
         if (!selectedDate || !selectedTime) return;
         try {
@@ -114,10 +119,11 @@ const DoctorsPage = () => {
                 </Typography>
             </Box>
 
+            {/* Використовуємо CSS Grid для розташування карток */}
             <Box sx={{
                 display: 'grid',
-                gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
-                gap: 3
+                gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, // 1 колонка на мобільних, 2 на більших екранах
+                gap: 3 // Відступи між картками
             }}>
                 {doctors.map((doc) => (
                     <Card 
@@ -133,6 +139,7 @@ const DoctorsPage = () => {
                         }}
                     >
                         <CardContent sx={{ flexGrow: 1, textAlign: 'center' }}>
+                            {/* Іконка або Аватар лікаря */}
                             <Avatar 
                                 sx={{ 
                                     bgcolor: 'primary.light', 
@@ -144,6 +151,7 @@ const DoctorsPage = () => {
                                 <MedicalServicesOutlinedIcon fontSize="large" sx={{ color: 'white' }} />
                             </Avatar>
 
+                            {/* Збільшений шрифт спеціалізації */}
                             <Typography 
                                 variant="subtitle1" 
                                 color="primary.main" 
@@ -201,6 +209,7 @@ const DoctorsPage = () => {
                 ))}
             </Box>
 
+            {/* МОДАЛЬНЕ ВІКНО ЗАПИСУ */}
             <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
                 <DialogTitle sx={{ textAlign: 'center', pb: 1 }}>
                     Запис до лікаря
